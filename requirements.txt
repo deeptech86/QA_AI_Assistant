@@ -1,0 +1,14 @@
+langchain~=0.3.25
+langchain-community==0.0.10
+python-dotenv==1.0.0
+streamlit==1.29.0
+requests==2.31.0
+langchain-anthropic
+dotenv
+langchain_openai
+langchain-google-firestore
+google
+langchain-core~=0.3.58
+anthropic~=0.52.1
+pandas~=2.2.3
+protobuf~=4.25.3
