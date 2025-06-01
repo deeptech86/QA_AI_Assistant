@@ -196,7 +196,7 @@ if "anthropic_client" not in st.session_state:
 
 # Sidebar configuration
 with st.sidebar:
-    st.title("🔒 QA Assistant")
+    st.title("🔒 QA Assistant_5")
     
     st.markdown("### Allowed GH Topics:")
     st.success("✅ Programming & Software Development")
@@ -238,7 +238,7 @@ with st.sidebar:
         st.rerun()
 
 # Main interface
-st.title("🔒 QA Agent Assistant")
+st.title("🔒 QA Agent Assistant_5")
 st.markdown("**This AI assistant only answers questions about Programming, Data Science, and Business topics.**")
 
 # Display current restrictions
