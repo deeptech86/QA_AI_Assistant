@@ -278,7 +278,7 @@ if "auto_save" not in st.session_state:
 
 # Sidebar configuration
 with st.sidebar:
-    st.title("🔒 QA AI Assistant")
+    st.title("🔒 QA AI Assistant_4")
     
     # 🔴 NEW: Chat History Management Section
     st.markdown("### 💾 Chat History")
@@ -434,11 +434,11 @@ main_option = st.radio(
     )
 )
 if main_option == "Test Case generation":
-    user_input= st.text_area("Enter details about the action to be performed...",help='Enter details about the application or functionality ....',label_visibility="visible")
-
+    user_input= st.text_area("Enter details about the action to be performed...",placeholder='Enter details about the functionality for which you want to create test case....',label_visibility="visible")
+    url_input = st.text_input('Application url', placeholder='Enter your AUT url')
 else:
     add_new = st.checkbox('Add New Repo')
-    desired_repo_location = st.text_input('Enter desired repo location')
+    desired_repo_location = st.text_input('Repo location', placeholder='Enter desired repo location in your local Desktop/Downloads folders where you want to save the generated code')
     if main_option == "Generate Selenium Code":
         sub_option_2 = st.selectbox("Select language:", [
             "Java",
@@ -447,7 +447,13 @@ else:
             "C#"
         ])
         # add_new = st.checkbox('Add New Repo')
-        user_input = st.text_input('Enter Application url')
+        url_input = st.text_input('Application url', placeholder='Enter your AUT url')
+        keyword_input =  st.text_input ('Enter Details', placeholder='Enter specific area(if any)/keyword to generate Test Code')
+
+    if main_option == "Generate Unit Test in Java":
+        # add_new = st.checkbox('Add New Repo')
+        url_input = st.text_input('Application url', placeholder='Enter the AUT url')
+        keyword_input =  st.text_input ('Enter repo location', placeholder='Enter git or local repo location')
 
     if main_option == "Generate TestComplete Code":
         sub_option_3 = st.selectbox("Select language:", [
@@ -456,6 +462,8 @@ else:
             "JavaScript",
             "C#"
         ])
+        url_input = st.text_input('Application url', placeholder='Enter the AUT url')
+        keyword_input = st.text_input('Enter Details', placeholder='Enter specific area(if any)/keyword to generate Test Code')
 
     if main_option == "Generate API Test Code":
         sub_option_4 = st.selectbox("Select language:", [
@@ -463,6 +471,9 @@ else:
             "Python",
             "JavaScript",
         ])
+        endpoint_input = st.text_input('Endpoints', placeholder= 'Enter endpoints to generate test Code')
+        keyword_input = st.text_input('Enter Details',
+                                      placeholder='Enter specific area(if any)/keyword to generate Test Code')
 
     if main_option == "Convert Existing Code":
         sub_option_5 = st.selectbox("Select language:", [
@@ -470,7 +481,7 @@ else:
             "Python Selenium to Playwright Javascript",
             "JavaScript Playwright to Cypress JavaScript",
         ])
-        repo_location = st.text_input("Enter the existing repo in your local or git:")
+        repo_location = st.text_input("Repo Location", placeholder='Enter the existing repo in your local or git:')
 
 # Display chat messages
 for message in st.session_state.messages:
