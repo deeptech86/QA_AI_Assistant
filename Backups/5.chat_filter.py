@@ -4,6 +4,11 @@ from typing import List, Dict, Tuple
 import os
 import re
 import pandas as pd
+import sys
+from pathlib import Path
+
+
+from prompts.prompt_loader import get_allowed_topics
 
 # Page configuration
 st.set_page_config(
@@ -12,47 +17,82 @@ st.set_page_config(
     layout="wide"
 )
 
+# Add the prompts directory to Python path
+prompts_dir = Path(__file__).parent.parent / "prompts"
+sys.path.append(str(prompts_dir))
+
+from prompts.prompt_loader import (
+
+    get_system_prompt,
+    get_ui_text,
+    get_response_message,
+    get_input_validation_message,
+    get_filter_message,
+    get_allowed_topics,
+    get_forbidden_topics,
+    get_code_patterns,
+    get_action_options,
+    get_language_options,
+    get_prompts_config,
+    load_chat_filter_prompts
+)
+
+
+
+
+
+try:
+    prompts_config = get_prompts_config()
+    ALLOWED_TOPICS = get_allowed_topics()
+    FORBIDDEN_TOPICS = get_forbidden_topics()
+    SYSTEM_PROMPT = get_system_prompt()
+    CODE_PATTERNS = get_code_patterns()
+    ACTION_OPTIONS = get_action_options()
+except Exception as e:
+    st.error(f"Failed to load prompts configuration: {e}")
+    st.stop()
+
 # Configuration: Define allowed topics and restrictions
-ALLOWED_TOPICS = {
-    "programming": ["code", "programming", "python", "javascript", "software", "debugging", "algorithm","quality Assurance","testing", "test cases", "automation", "unit tests", "integration tests", "test automation"],
-    "data_science": ["data", "analysis", "statistics", "machine learning", "pandas", "numpy", "visualization"],
-   
-}
-
-FORBIDDEN_TOPICS = [
-    "medical advice", "legal advice", "personal information", "harmful content",
-    "violence", "illegal activities", "personal relationships", "politics"
-]
-
-# System prompt to constrain Claude's behavior
-SYSTEM_PROMPT = """You are a specialized AI assistant focused ONLY on helping with:
-1. Writing Test Cases for software applications
-2. Programming and software development escpecially generating automation code snippets
-3. Data science and analytics
-
-The Test Cases you generate should be clear, concise, and follow best practices in the below prescribed format:
-FORMAT FOR TEST CASE WRITING:
-- **Test Case ID**: A unique identifier for the test case
-- **Test Case Description**: A brief description of what the test case is testing
-- **Preconditions**: Any setup required before executing the test case
-- **Test Steps**: Step-by-step instructions to execute the test case
-- **Expected Result**: The expected outcome of the test case
-The response for the Test Cases should be in below markdown format :
-```markdown
-col1, col2,col3, col4,col5 = st.columns(5)
-| Test Case ID | Test Case Description | Preconditions | Test Steps | Expected Result |
-
-STRICT RULES:
-- ONLY answer questions related to these three topics
-- If asked about anything else, politely decline and redirect to allowed topics
-- Do not provide medical, legal, or personal advice
-- Do not discuss politics, personal relationships, or controversial topics
-- If unsure whether a topic is allowed, err on the side of caution and decline
-
-Response format for forbidden topics:
-"I'm sorry, but I can only help with programming or data science realted to NGS. Could you ask me something about one of these areas instead?"
-
-Be helpful and detailed for allowed topics, but strict about the boundaries."""
+# ALLOWED_TOPICS = {
+#     "programming": ["code", "programming", "python", "javascript", "software", "debugging", "algorithm","quality Assurance","testing", "test cases", "automation", "unit tests", "integration tests", "test automation"],
+#     "data_science": ["data", "analysis", "statistics", "machine learning", "pandas", "numpy", "visualization"],
+#
+# }
+#
+# FORBIDDEN_TOPICS = [
+#     "medical advice", "legal advice", "personal information", "harmful content",
+#     "violence", "illegal activities", "personal relationships", "politics"
+# ]
+#
+# # System prompt to constrain Claude's behavior
+# SYSTEM_PROMPT = """You are a specialized AI assistant focused ONLY on helping with:
+# 1. Writing Test Cases for software applications
+# 2. Programming and software development escpecially generating automation code snippets
+# 3. Data science and analytics
+#
+# The Test Cases you generate should be clear, concise, and follow best practices in the below prescribed format:
+# FORMAT FOR TEST CASE WRITING:
+# - **Test Case ID**: A unique identifier for the test case
+# - **Test Case Description**: A brief description of what the test case is testing
+# - **Preconditions**: Any setup required before executing the test case
+# - **Test Steps**: Step-by-step instructions to execute the test case
+# - **Expected Result**: The expected outcome of the test case
+# The response for the Test Cases should be in below markdown format :
+# ```markdown
+# col1, col2,col3, col4,col5 = st.columns(5)
+# | Test Case ID | Test Case Description | Preconditions | Test Steps | Expected Result |
+#
+# STRICT RULES:
+# - ONLY answer questions related to these three topics
+# - If asked about anything else, politely decline and redirect to allowed topics
+# - Do not provide medical, legal, or personal advice
+# - Do not discuss politics, personal relationships, or controversial topics
+# - If unsure whether a topic is allowed, err on the side of caution and decline
+#
+# Response format for forbidden topics:
+# "I'm sorry, but I can only help with programming or data science realted to NGS. Could you ask me something about one of these areas instead?"
+#
+# Be helpful and detailed for allowed topics, but strict about the boundaries."""
 
 @st.cache_resource
 def get_anthropic_client():
@@ -73,7 +113,7 @@ def check_topic_allowed(text: str) -> Tuple[bool, str]:
     # Check for forbidden topics first
     for forbidden in FORBIDDEN_TOPICS:
         if forbidden.lower() in text_lower:
-            return False, f"Contains forbidden topic: {forbidden}"
+            return False, get_filter_message('forbidden_topic', topic=forbidden)
     
     # Check for allowed topics
     found_topics = []
@@ -84,21 +124,18 @@ def check_topic_allowed(text: str) -> Tuple[bool, str]:
                 break
     
     if found_topics:
-        return True, f"Allowed topics found: {', '.join(found_topics)}"
+        return True, get_filter_message('allowed_topics_found', topics=', '.join(found_topics))
     
     # If no specific topics found, apply more flexible rules
     # Check for programming-related patterns
-    code_patterns = [
-        r'\bdef\s+\w+\(', r'\bclass\s+\w+', r'\bimport\s+\w+', 
-        r'\bfunction\s+\w+', r'[{}();]', r'\b(if|else|for|while)\b'
-    ]
+
     
-    for pattern in code_patterns:
+    for pattern in CODE_PATTERNS:
         if re.search(pattern, text_lower):
-            return True, "Contains code-like content"
+            return True, get_filter_message('code_content_detected')
     
     # If nothing matches, it's likely not allowed
-    return False, "No allowed topics detected"
+    return False, get_filter_message('no_topics_detected')
 
 def filter_user_input(user_input: str) -> Tuple[bool, str]:
     """
@@ -107,19 +144,19 @@ def filter_user_input(user_input: str) -> Tuple[bool, str]:
     """
     # Basic checks
     if len(user_input.strip()) < 3:
-        return False, "Please provide a more detailed question."
+        return False, get_input_validation_message('insufficient_detail')
     
     # Check topic allowance
     is_allowed, reason = check_topic_allowed(user_input)
     
     if not is_allowed:
-        return False, f"I can only help with programming,  or data science. {reason}"
+        return False, get_input_validation_message('topic_restriction', reason=reason)
     
     # if 'test case' in user_input.lower():
     #     return True, "Input approved"
     # print(f"User input passed pre-filter: {user_input}")
     
-    return True, "Input approved"
+    return True, get_input_validation_message('input_approved')
 
 
 def parse_structured_text_to_dataframe(response: str) -> pd.DataFrame:
@@ -196,7 +233,7 @@ if "anthropic_client" not in st.session_state:
 
 # Sidebar configuration
 with st.sidebar:
-    st.title("🔒 QA Assistant")
+    st.title("🔒 QA Assistant_5")
     
     st.markdown("### Allowed GH Topics:")
     st.success("✅ Programming & Software Development")
@@ -238,7 +275,7 @@ with st.sidebar:
         st.rerun()
 
 # Main interface
-st.title("🔒 QA Agent Assistant")
+st.title("🔒 QA Agent Assistant_5")
 st.markdown("**This AI assistant only answers questions about Programming, Data Science, and Business topics.**")
 
 # Display current restrictions
@@ -271,27 +308,13 @@ if main_option == "Generate Unit Test in Java":
     repo_location = st.text_input("Enter the git or local repo location:")
 
 if main_option == "Generate Selenium Code":
-        sub_option = st.selectbox("Select language:", [
-            "Java",
-            "Python",
-            "JavaScript",
-            "C#"
-        ])
+        sub_option = st.selectbox("Select language:", get_language_options('selenium_languages'))
 
 if main_option == "Generate TestComplete Code":
-        sub_option = st.selectbox("Select language:", [
-            "Java",
-            "Python",
-            "JavaScript",
-            "C#"
-        ])
+        sub_option = st.selectbox("Select language:", get_language_options('testcomplete_languages'))
 
 if main_option == "Generate API Test Code":
-        sub_option = st.selectbox("Select language:", [
-            "Java",
-            "Python",
-            "JavaScript",
-        ])
+        sub_option = st.selectbox("Select language:", get_language_options('api_test_languages'))
 
 if main_option == "Convert Existing Code":
         sub_option = st.selectbox("Select language:", [

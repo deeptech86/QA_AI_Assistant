@@ -11,6 +11,30 @@ import uuid
 from pathlib import Path
 
 from streamlit import chat_input
+import sys
+from pathlib import Path
+
+# prompts_dir = Path(__file__).parent.parent / "prompts"
+# sys.path.append(str(prompts_dir))
+
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
+
+from prompts.prompt_loader import (
+
+    get_system_prompt,
+    get_ui_text,
+    get_response_message,
+    get_input_validation_message,
+    get_filter_message,
+    get_allowed_topics,
+    get_forbidden_topics,
+    get_code_patterns,
+    get_action_options,
+    get_language_options,
+    get_prompts_config,
+    load_chat_filter_prompts
+)
 
 # Page configuration
 st.set_page_config(
@@ -19,50 +43,21 @@ st.set_page_config(
     layout="wide"
 )
 
+try:
+    prompts_config = get_prompts_config()
+    ALLOWED_TOPICS = get_allowed_topics()
+    FORBIDDEN_TOPICS = get_forbidden_topics()
+    SYSTEM_PROMPT = get_system_prompt()
+    CODE_PATTERNS = get_code_patterns()
+    ACTION_OPTIONS = get_action_options()
+except Exception as e:
+    st.error(f"Failed to load YAML prompts configuration: {e}")
+    st.stop()
+
 # 🔴 NEW: Configuration for chat history storage
 CHAT_HISTORY_DIR = "chat_histories"
 Path(CHAT_HISTORY_DIR).mkdir(exist_ok=True)
 
-# Configuration: Define allowed topics and restrictions
-ALLOWED_TOPICS = {
-    "programming": ["code", "programming", "python", "javascript", "software", "debugging", "algorithm","quality Assurance","testing", "test cases", "automation", "unit tests", "integration tests", "test automation"],
-    "data_science": ["data", "analysis", "statistics", "machine learning", "pandas", "numpy", "visualization"],
-}
-
-FORBIDDEN_TOPICS = [
-    "medical advice", "legal advice", "personal information", "harmful content",
-    "violence", "illegal activities", "personal relationships", "politics"
-]
-
-# System prompt to constrain Claude's behavior
-SYSTEM_PROMPT = """You are a specialized AI assistant focused ONLY on helping with:
-1. Writing Test Cases for software applications
-2. Programming and software development escpecially generating automation code snippets
-3. Data science and analytics
-
-The Test Cases you generate should be clear, concise, and follow best practices in the below prescribed format:
-FORMAT FOR TEST CASE WRITING:
-- **Test Case ID**: A unique identifier for the test case
-- **Test Case Description**: A brief description of what the test case is testing
-- **Preconditions**: Any setup required before executing the test case
-- **Test Steps**: Step-by-step instructions to execute the test case
-- **Expected Result**: The expected outcome of the test case
-The response for the Test Cases should be in below markdown format :
-```markdown
-col1, col2,col3, col4,col5 = st.columns(5)
-| Test Case ID | Test Case Description | Preconditions | Test Steps | Expected Result |
-
-STRICT RULES:
-- ONLY answer questions related to these three topics
-- If asked about anything else, politely decline and redirect to allowed topics
-- Do not provide medical, legal, or personal advice
-- Do not discuss politics, personal relationships, or controversial topics
-- If unsure whether a topic is allowed, err on the side of caution and decline
-
-Response format for forbidden topics:
-"I'm sorry, but I can only help with programming or data science realted to NGS. Could you ask me something about one of these areas instead?"
-
-Be helpful and detailed for allowed topics, but strict about the boundaries."""
 
 # 🔴 NEW: Chat History Management Functions
 def save_chat_history(session_id: str, messages: List[Dict], session_name: str = None):
@@ -158,7 +153,7 @@ def check_topic_allowed(text: str) -> Tuple[bool, str]:
     # Check for forbidden topics first
     for forbidden in FORBIDDEN_TOPICS:
         if forbidden.lower() in text_lower:
-            return False, f"Contains forbidden topic: {forbidden}"
+            return False, get_filter_message('forbidden_topic', topic=forbidden)
     
     # Check for allowed topics
     found_topics = []
@@ -169,21 +164,18 @@ def check_topic_allowed(text: str) -> Tuple[bool, str]:
                 break
     
     if found_topics:
-        return True, f"Allowed topics found: {', '.join(found_topics)}"
+        return True, get_filter_message('allowed_topics_found', topics=', '.join(found_topics))
     
     # If no specific topics found, apply more flexible rules
     # Check for programming-related patterns
-    code_patterns = [
-        r'\bdef\s+\w+\(', r'\bclass\s+\w+', r'\bimport\s+\w+', 
-        r'\bfunction\s+\w+', r'[{}();]', r'\b(if|else|for|while)\b'
-    ]
-    
-    for pattern in code_patterns:
+
+
+    for pattern in CODE_PATTERNS:
         if re.search(pattern, text_lower):
-            return True, "Contains code-like content"
+            return True, get_filter_message('code_content_detected')
     
     # If nothing matches, it's likely not allowed
-    return False, "No allowed topics detected"
+    return False, get_filter_message('no_topics_detected')
 
 def filter_user_input(user_input: str) -> Tuple[bool, str]:
     """
@@ -192,15 +184,15 @@ def filter_user_input(user_input: str) -> Tuple[bool, str]:
     """
     # Basic checks
     if len(user_input.strip()) < 3:
-        return False, "Please provide a more detailed question."
+        return False, get_input_validation_message('insufficient_detail')
     
     # Check topic allowance
     is_allowed, reason = check_topic_allowed(user_input)
     
     if not is_allowed:
-        return False, f"I can only help with programming,  or data science. {reason}"
+        return False, get_input_validation_message('topic_restriction', reason=reason)
     
-    return True, "Input approved"
+    return True, get_input_validation_message('input_approved')
 
 def parse_structured_text_to_dataframe(response: str) -> pd.DataFrame:
     """
@@ -248,7 +240,7 @@ def call_claude_with_restrictions(client: anthropic.Anthropic, user_message: str
         
         # Post-process response to ensure compliance
         if any(forbidden.lower() in response_text.lower() for forbidden in FORBIDDEN_TOPICS):
-            return "I apologize, but I cannot provide information on that topic. Please ask me about programming or data science instead."
+            return get_response_message('forbidden_topic_response')
         
         return response_text
         
@@ -428,7 +420,7 @@ main_option = st.radio(
         "Generate Selenium Code",
         "Generate Playwright Code",
         "Generate TestComplete Code",
-        "Generate API Test Code",
+        "Generate API Code",
         "Convert Existing Code"
         ""
     )
@@ -440,12 +432,7 @@ else:
     add_new = st.checkbox('Add New Repo')
     desired_repo_location = st.text_input('Repo location', placeholder='Enter desired repo location in your local Desktop/Downloads folders where you want to save the generated code')
     if main_option == "Generate Selenium Code":
-        sub_option_2 = st.selectbox("Select language:", [
-            "Java",
-            "Python",
-            "JavaScript",
-            "C#"
-        ])
+        sub_option_2 = st.selectbox("Select language:", get_language_options('selenium_languages'))
         # add_new = st.checkbox('Add New Repo')
         url_input = st.text_input('Application url', placeholder='Enter your AUT url')
         keyword_input =  st.text_input ('Enter Details', placeholder='Enter specific area(if any)/keyword to generate Test Code')
@@ -456,21 +443,12 @@ else:
         keyword_input =  st.text_input ('Enter repo location', placeholder='Enter git or local repo location')
 
     if main_option == "Generate TestComplete Code":
-        sub_option_3 = st.selectbox("Select language:", [
-            "Java",
-            "Python",
-            "JavaScript",
-            "C#"
-        ])
+        sub_option_3 = st.selectbox("Select language:", get_language_options('testcomplete_languages'))
         url_input = st.text_input('Application url', placeholder='Enter the AUT url')
         keyword_input = st.text_input('Enter Details', placeholder='Enter specific area(if any)/keyword to generate Test Code')
 
     if main_option == "Generate API Test Code":
-        sub_option_4 = st.selectbox("Select language:", [
-            "Java",
-            "Python",
-            "JavaScript",
-        ])
+        sub_option_4 = st.selectbox("Select language:", get_language_options('api_test_languages'))
         endpoint_input = st.text_input('Endpoints', placeholder= 'Enter endpoints to generate test Code')
         keyword_input = st.text_input('Enter Details',
                                       placeholder='Enter specific area(if any)/keyword to generate Test Code')
